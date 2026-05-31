@@ -29,6 +29,68 @@ logging.basicConfig(
 )
 log = logging.getLogger("BSLoader")
 
+# ==============================================
+# AUTOMATIC EUROPEAN PROXY ROUTER FOR US SERVERS (BYPASS US BLOCK)
+# ==============================================
+
+CURRENT_PROXY = None
+PROXY_HOST = None
+PROXY_PORT = None
+
+def init_proxy_rotator():
+    global CURRENT_PROXY, PROXY_HOST, PROXY_PORT
+    log.info("[Proxy] Checking if running in US and blocked by Binance...")
+    _original_get = requests.get
+    
+    try:
+        # Check if direct request to Binance works
+        r = _original_get("https://fapi.binance.com/fapi/v1/ping", timeout=3)
+        if r.status_code == 200:
+            log.info("[Proxy] Direct connection to Binance works! No proxy needed.")
+            return
+    except Exception as e:
+        log.warning(f"[Proxy] Direct connection blocked/failed: {e}. Fetching European proxy...")
+    
+    # Try fetching proxies from free European APIs (Germany, Netherlands, France, UK)
+    try:
+        url = "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=1500&country=DE,NL,FR,GB&ssl=yes&anonymity=anonymous"
+        resp = _original_get(url, timeout=5)
+        if resp.status_code == 200:
+            proxies_list = [p.strip() for p in resp.text.split("\n") if p.strip()]
+            log.info(f"[Proxy] Fetched {len(proxies_list)} potential European proxies. Testing...")
+            
+            for proxy in proxies_list:
+                test_proxies = {
+                    "http": f"http://{proxy}",
+                    "https": f"http://{proxy}"
+                }
+                try:
+                    test_r = _original_get("https://fapi.binance.com/fapi/v1/ping", proxies=test_proxies, timeout=3)
+                    if test_r.status_code == 200:
+                        log.info(f"[Proxy] Found working European proxy: {proxy}")
+                        CURRENT_PROXY = test_proxies
+                        parts = proxy.split(":")
+                        PROXY_HOST = parts[0]
+                        PROXY_PORT = int(parts[1])
+                        return
+                except:
+                    continue
+    except Exception as ex:
+        log.error(f"[Proxy] Error fetching proxy list: {ex}")
+    
+    log.error("[Proxy] Could not find any working European proxy.")
+
+# Run initialization
+init_proxy_rotator()
+
+# Overwrite requests.get to automatically inject the proxy
+_original_get = requests.get
+def proxy_get(url, *args, **kwargs):
+    if CURRENT_PROXY and "proxies" not in kwargs:
+        kwargs["proxies"] = CURRENT_PROXY
+    return _original_get(url, *args, **kwargs)
+requests.get = proxy_get
+
 # Silence noise
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -153,7 +215,12 @@ class BinanceWSLoader:
                                 on_error=on_error,
                                 on_close=on_close)
         
-        wst = threading.Thread(target=ws.run_forever, daemon=True)
+        kwargs = {}
+        if PROXY_HOST and PROXY_PORT:
+            kwargs["http_proxy_host"] = PROXY_HOST
+            kwargs["http_proxy_port"] = PROXY_PORT
+            
+        wst = threading.Thread(target=ws.run_forever, kwargs=kwargs, daemon=True)
         wst.start()
         self.sockets.append(ws)
 
