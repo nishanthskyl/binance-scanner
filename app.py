@@ -41,6 +41,8 @@ PROXY_NEEDED = None  # None = unknown, True = yes, False = no
 
 def init_proxy_rotator():
     global CURRENT_PROXY, PROXY_HOST, PROXY_PORT, PROXY_READY, PROXY_NEEDED
+    if PROXY_NEEDED is not None:
+        return
     log.info("[Proxy] Checking if running in US and blocked by Binance...")
     _original_get = requests.get
     
@@ -279,6 +281,13 @@ class BinanceWSLoader:
                 log.warning(f"[kline_handler] Error: {ex}")
 
     def _warm_up(self, symbols):
+        # Wait for the background proxy selector if we are in a blocked region
+        for _ in range(20):
+            if PROXY_NEEDED is None or (PROXY_NEEDED and not PROXY_READY):
+                time.sleep(0.5)
+            else:
+                break
+                
         try:
             self.status = "Buffering History (1H/4H)..."
             self.warmup_progress = 0
@@ -453,7 +462,7 @@ TIMEFRAME_MAP = {
 def get_perpetual_symbols():
     """Fetch all USDT perpetual trading pairs from Binance"""
     # Wait for the background proxy selector if we are in a blocked region
-    for _ in range(10):
+    for _ in range(20):
         if PROXY_NEEDED is None or (PROXY_NEEDED and not PROXY_READY):
             time.sleep(0.5)
         else:
