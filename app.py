@@ -2700,6 +2700,11 @@ def create_day_pattern_chart(pattern_df, symbol, day_of_week):
             f'{symbol} - {day_of_week} USDT Volume',
             f'{symbol} - {day_of_week} Performance Distribution'
         ),
+        specs=[
+            [{"type": "xy"}],
+            [{"type": "xy"}],
+            [{"type": "domain"}]
+        ],
         vertical_spacing=0.15,
         row_heights=[0.4, 0.3, 0.3]
     )
