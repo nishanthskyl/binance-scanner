@@ -338,6 +338,27 @@ def render_ws_status():
 
 
 # ==============================================
+# GLOBAL CONSTANTS
+# ==============================================
+
+# Binance API configuration
+BINANCE_API_URL = "https://fapi.binance.com"
+BINANCE_SPOT_API_URL = "https://api.binance.com"
+
+# Timezone configuration
+IST = ZoneInfo("Asia/Kolkata")
+UTC = ZoneInfo("UTC")
+
+# Timeframe mapping to Binance intervals
+TIMEFRAME_MAP = {
+    "1H": "1h",
+    "4H": "4h",
+    "Daily": "1d",
+    "Weekly": "1w",
+    "Monthly": "1M"
+}
+
+# ==============================================
 # CACHED API FUNCTIONS
 # ==============================================
 
