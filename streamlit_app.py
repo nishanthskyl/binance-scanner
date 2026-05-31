@@ -49,36 +49,49 @@ def init_proxy_rotator():
             log.info("[Proxy] Direct connection to Binance works! No proxy needed.")
             return
     except Exception as e:
-        log.warning(f"[Proxy] Direct connection blocked/failed: {e}. Fetching European proxy...")
+        log.warning(f"[Proxy] Direct connection blocked/failed: {e}. Fetching global proxy list...")
     
-    # Try fetching proxies from free European APIs (Germany, Netherlands, France, UK)
+    # Try fetching proxies from a highly-updated public repository
     try:
-        url = "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=1500&country=DE,NL,FR,GB&ssl=yes&anonymity=anonymous"
+        url = "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt"
         resp = _original_get(url, timeout=5)
         if resp.status_code == 200:
             proxies_list = [p.strip() for p in resp.text.split("\n") if p.strip()]
-            log.info(f"[Proxy] Fetched {len(proxies_list)} potential European proxies. Testing...")
+            log.info(f"[Proxy] Fetched {len(proxies_list)} potential proxies. Testing in parallel...")
             
-            for proxy in proxies_list:
+            # Parallel testing helper
+            def test_single_proxy(proxy):
                 test_proxies = {
                     "http": f"http://{proxy}",
                     "https": f"http://{proxy}"
                 }
                 try:
-                    test_r = _original_get("https://fapi.binance.com/fapi/v1/ping", proxies=test_proxies, timeout=3)
+                    test_r = _original_get("https://fapi.binance.com/fapi/v1/ping", proxies=test_proxies, timeout=2.5)
                     if test_r.status_code == 200:
-                        log.info(f"[Proxy] Found working European proxy: {proxy}")
+                        return proxy, test_proxies
+                except:
+                    pass
+                return None
+
+            # Test first 150 proxies in parallel
+            test_subset = proxies_list[:150]
+            with ThreadPoolExecutor(max_workers=30) as executor:
+                results = list(executor.map(test_single_proxy, test_subset))
+                
+                # Use the first working proxy
+                for res in results:
+                    if res:
+                        proxy, test_proxies = res
+                        log.info(f"[Proxy] Found working proxy bypassing Binance block: {proxy}")
                         CURRENT_PROXY = test_proxies
                         parts = proxy.split(":")
                         PROXY_HOST = parts[0]
                         PROXY_PORT = int(parts[1])
                         return
-                except:
-                    continue
     except Exception as ex:
         log.error(f"[Proxy] Error fetching proxy list: {ex}")
     
-    log.error("[Proxy] Could not find any working European proxy.")
+    log.error("[Proxy] Could not find any working proxy.")
 
 # Run initialization
 init_proxy_rotator()
