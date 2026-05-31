@@ -36,9 +36,11 @@ log = logging.getLogger("BSLoader")
 CURRENT_PROXY = None
 PROXY_HOST = None
 PROXY_PORT = None
+PROXY_READY = False
+PROXY_NEEDED = None  # None = unknown, True = yes, False = no
 
 def init_proxy_rotator():
-    global CURRENT_PROXY, PROXY_HOST, PROXY_PORT
+    global CURRENT_PROXY, PROXY_HOST, PROXY_PORT, PROXY_READY, PROXY_NEEDED
     log.info("[Proxy] Checking if running in US and blocked by Binance...")
     _original_get = requests.get
     
@@ -47,9 +49,12 @@ def init_proxy_rotator():
         r = _original_get("https://fapi.binance.com/fapi/v1/ping", timeout=3)
         if r.status_code == 200:
             log.info("[Proxy] Direct connection to Binance works! No proxy needed.")
+            PROXY_NEEDED = False
+            PROXY_READY = True
             return
     except Exception as e:
         log.warning(f"[Proxy] Direct connection blocked/failed: {e}. Fetching global proxy list...")
+        PROXY_NEEDED = True
     
     # Try fetching proxies from a highly-updated public repository
     try:
@@ -87,14 +92,16 @@ def init_proxy_rotator():
                         parts = proxy.split(":")
                         PROXY_HOST = parts[0]
                         PROXY_PORT = int(parts[1])
+                        PROXY_READY = True
                         return
     except Exception as ex:
         log.error(f"[Proxy] Error fetching proxy list: {ex}")
     
     log.error("[Proxy] Could not find any working proxy.")
+    PROXY_READY = True  # Mark ready so calls don't hang forever even if all fail
 
-# Run initialization
-init_proxy_rotator()
+# Run initialization in a non-blocking background thread
+threading.Thread(target=init_proxy_rotator, daemon=True).start()
 
 # Overwrite requests.get to automatically inject the proxy
 _original_get = requests.get
@@ -445,6 +452,13 @@ TIMEFRAME_MAP = {
 @st.cache_data(ttl=3600)
 def get_perpetual_symbols():
     """Fetch all USDT perpetual trading pairs from Binance"""
+    # Wait for the background proxy selector if we are in a blocked region
+    for _ in range(10):
+        if PROXY_NEEDED is None or (PROXY_NEEDED and not PROXY_READY):
+            time.sleep(0.5)
+        else:
+            break
+            
     try:
         response = requests.get(f"{BINANCE_API_URL}/fapi/v1/exchangeInfo", timeout=10)
         
