@@ -367,7 +367,15 @@ def get_perpetual_symbols():
     """Fetch all USDT perpetual trading pairs from Binance"""
     try:
         response = requests.get(f"{BINANCE_API_URL}/fapi/v1/exchangeInfo", timeout=10)
+        
+        # Add debug prints here
+        print(f"DEBUG: Binance API Status Code: {response.status_code}")
+        print(f"DEBUG: Binance API Response Text: {response.text[:500]}...") # Print first 500 chars to avoid flooding
+        
         data = response.json()
+        print(f"DEBUG: Type of data from response.json(): {type(data)}")
+        if isinstance(data, dict):
+            print(f"DEBUG: Keys in data: {data.keys()}")
         
         perpetual_symbols = []
         for symbol_info in data['symbols']:
